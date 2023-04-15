@@ -10,6 +10,9 @@ import cv2
 # Press the green button in the gutter to run the script.
 #notice: the numpy to CIImage that range need to [0~1]
 
+def topbottomConv (height, y):
+    return height - y
+
 def make_request_handler(results):
     """ results: list to store results """
     if not isinstance(results, list):
@@ -29,25 +32,28 @@ if __name__ == '__main__':
     count = 70
     timeaverage = 0
     i = 0
-    while i < 70:
+    vision_handler = Vision.VNImageRequestHandler.alloc()
+    vision_request = Vision.VNRecognizeTextRequest.alloc()
+    while i < count:
         img = cimg.fromFile("/Users/xuzhilei/Desktop/flyff_pic/screenshot_" + str(i) +".jpg")
         width, height = img.size
-        print("width: ", width, "height: ", height)
-        body_image = img.crop(206, 1292 - 200, 514 - 206, 200 - 64)
+        print("x :", 206,"y :", topbottomConv(1292, 200))
+        body_image = img.crop(206,  topbottomConv(1292, 200), 308, 136)
+        target_image = img.crop(604, topbottomConv(1292, 132), 546, 138)
+        vision_handler.initWithCIImage_options_(body_image.ciimage, None)
         start_time = time.time()
-        vision_options = NSDictionary.dictionaryWithDictionary_({})
-        vision_handler = Vision.VNImageRequestHandler.alloc().initWithCIImage_options_(
-            body_image.ciimage, vision_options
-        )
         results = []
         handler = make_request_handler(results)
-        vision_request = Vision.VNRecognizeTextRequest.alloc().initWithCompletionHandler_(handler)
+        vision_request.initWithCompletionHandler_(handler)
         error = vision_handler.performRequests_error_([vision_request], None)
         end_time = time.time()
         timeaverage = timeaverage + (end_time - start_time)
-        print("cost time :", (end_time - start_time))
+        # print("cost time :", (end_time - start_time))
         for result in results:
             print(result)
         i = i + 1
     print("average time : ", timeaverage/70.0)
+    vision_handler.dealloc()
+    vision_request.dealloc()
+
     # show(body_image, title='body')
