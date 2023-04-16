@@ -2,11 +2,6 @@
 
 from selenium import webdriver
 from bs4 import BeautifulSoup
-import requests
-import objc
-import Vision
-import CoreML
-import Quartz
 from time import sleep
 import cv2
 import numpy as np
