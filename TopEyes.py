@@ -21,6 +21,11 @@ import time
 import CVdetection
 import re
 
+def BodyRectBar(b_w, b_h):
+    b_Rect = CGRectMake((1 - 0.891) * b_w, 0.8972 * b_h, 0.067 * b_w,
+                                0.078 * b_h)
+    return b_Rect
+
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -74,11 +79,10 @@ class Ui_MainWindow(object):
         MainWindow.setCentralWidget(self.centralwidget)
         self.retranslateUi(MainWindow)
 
-        self.frame_ref = cimg.create_cgimage_from_numpy(np.zeros((window_height , window_width), np.float32))
         self.ai_detect = QTimer()
         self.time_camera = QTimer()
         self.ai_detect.start(50)
-        self.time_camera.start(60)
+        self.time_camera.start(50)
         self.ai_detect.timeout.connect(self.Inference)
         self.time_camera.timeout.connect(self.RenderFrame)
         #origin blx = 74, bly = 92, trx = 218 try = 28 (base on 1200, 983)
@@ -86,12 +90,10 @@ class Ui_MainWindow(object):
         # window_y = 0.906 * height
         # window_w = 0.12 * width
         # window_h = 0.065 * height
-        self.StatusBar = CGRectMake((1 - 0.891) * window_width , 0.8972 * window_height, 0.067 * window_width, 0.078 * window_height)
-
         self.BodySupervisor = CVdetection.BodyStatus()
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-    def Inference(self):
+    def GetwindowIdRect(self):
         canvas = self.driverbrower.find_element("css selector", "canvas")
         style_attr = canvas.get_attribute("style")
         style_height = int(re.search(r"height:\s*(\d+)px", style_attr).group(1))
@@ -110,16 +112,21 @@ class Ui_MainWindow(object):
                                   style_height
                                   )
                 break
-        s_time = time.time()
-        self.frame_ref = CGWindowListCreateImage(rect, kCGWindowListOptionIncludingWindow, window_id,
+        return window_id, rect
+
+    def Inference(self):
+        window_id, window_rect = self.GetwindowIdRect()
+
+        # s_time = time.time()
+        cg_img_ref = CGWindowListCreateImage(window_rect, kCGWindowListOptionIncludingWindow, window_id,
                                         kCGWindowImageBoundsIgnoreFraming)
-        ciimage = CIImage.imageWithCGImage_(self.frame_ref)
+        ciimage = CIImage.imageWithCGImage_(cg_img_ref)
         cimage = cimg(ciimage)
         ci_w, ci_h = cimage.size
-        self.StatusBar = CGRectMake((1 - 0.891) * ci_w, 0.8972 * ci_h, 0.067 * ci_w, 0.078 * ci_h)
-        results = self.BodySupervisor.inputimage(cimage, self.StatusBar)
-        e_time = time.time()
-        print("rec time :", e_time - s_time)
+        bodystatusBar = BodyRectBar(ci_w, ci_h)
+        results = self.BodySupervisor.inputimage(cimage, bodystatusBar)
+        # e_time = time.time()
+        # print("rec time :", e_time - s_time)
         if results:
                 # if CGRectContainsPoint(self.StatusBar, resu[2].origin):
             if results:
@@ -133,30 +140,36 @@ class Ui_MainWindow(object):
                         self.lineEdit_3.setText(body_str[idx][0])
                     elif idx == 3:
                         self.lineEdit_4.setText(body_str[idx][0])
+        #CGImageRelease(cg_img_ref)
 
     def RenderFrame(self):
-        s_time = time.time()
-
-        width = CGImageGetWidth(self.frame_ref)
-        height = CGImageGetHeight(self.frame_ref)
-        bits_per_component = CGImageGetBitsPerComponent(self.frame_ref)
-        bits_per_pixel = CGImageGetBitsPerPixel(self.frame_ref)
-        bytes_per_row = CGImageGetBytesPerRow(self.frame_ref)
-        color_space = CGImageGetColorSpace(self.frame_ref)
-        bitmap_info = CGImageGetBitmapInfo(self.frame_ref)
-        provider = CGImageGetDataProvider(self.frame_ref)
+        window_id, window_rect = self.GetwindowIdRect()
+        # s_time = time.time()
+        cg_img_ref = CGWindowListCreateImage(window_rect, kCGWindowListOptionIncludingWindow, window_id,
+                                        kCGWindowImageBoundsIgnoreFraming)
+        width = CGImageGetWidth(cg_img_ref)
+        height = CGImageGetHeight(cg_img_ref)
+        bodystatusBar = BodyRectBar(width, height)
+        bits_per_component = CGImageGetBitsPerComponent(cg_img_ref)
+        bits_per_pixel = CGImageGetBitsPerPixel(cg_img_ref)
+        bytes_per_row = CGImageGetBytesPerRow(cg_img_ref)
+        color_space = CGImageGetColorSpace(cg_img_ref)
+        bitmap_info = CGImageGetBitmapInfo(cg_img_ref)
+        provider = CGImageGetDataProvider(cg_img_ref)
         data = CGDataProviderCopyData(provider)
 
         context = CoreGraphics.CGBitmapContextCreate(data, width, height, bits_per_component,
                                                      bytes_per_row,  color_space, bitmap_info)
         CoreGraphics.CGContextSetRGBFillColor(context, 1, 0, 0, 1)
-        CoreGraphics.CGContextStrokeRect(context,  self.StatusBar)
+        CoreGraphics.CGContextStrokeRect(context,  bodystatusBar)
         CoreGraphics.CGContextSetLineWidth(context, 5.0);
-        e_time = time.time()
-        print("draw time :", e_time - s_time)
+        # e_time = time.time()
+        # print("draw time :", e_time - s_time)
 
         qimage = QtGui.QImage(data, width, height, bytes_per_row, QtGui.QImage.Format_ARGB32)
+
         self.preview.setPixmap(QtGui.QPixmap.fromImage(qimage))
+        #CGImageRelease(cg_img_ref)
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
