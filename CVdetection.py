@@ -44,7 +44,7 @@ class BodyStatus:
     def inputimage(self, cimage, recrect):
         width, height = cimage.size
         #origin blx = 74, bly = 92, trx = 218 try = 28 (base on 1200, 983)
-        body_image = cimage.crop(recrect) # have bug!!!
+        body_image = cimage.crop(recrect)
         self.vision_handler.initWithCIImage_options_(body_image.ciimage, None)
         results = []
         handler = make_request_handler(results, width, height)
@@ -55,6 +55,7 @@ class BodyStatus:
     def __del__(self):
         self.vision_handler.dealloc()
         self.vision_request.dealloc()
+
 class TargetTrajectory:
     # Initializing
     def __init__(self):
@@ -67,6 +68,8 @@ class TargetTrajectory:
         self.GetMaxFilter.setDefaults()
         self.first_flag = True
         self.optical_result = None
+    def get_flag(self):
+        return self.first_flag
     def rest_flag(self):
         self.first_flag = True
     def detectlist(self, cur_image): # CIImage

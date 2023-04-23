@@ -16,6 +16,9 @@ from Quartz import *
 from AppKit import *
 import Vision
 from selenium import webdriver
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
+
 import numpy as np
 import time
 import CVdetection
@@ -24,6 +27,15 @@ import re
 def BodyRectBar(b_w, b_h):
     b_Rect = CGRectMake((1 - 0.891) * b_w, 0.8972 * b_h, 0.067 * b_w,
                                 0.078 * b_h)
+    return b_Rect
+
+def DetectRect(b_w, b_h):
+    b_Rect = CGRectMake(0.1 * b_w, 0.1 * b_h, 0.8 * b_w,
+                                0.8 * b_h)
+    return b_Rect
+def TargetTitle(b_w, b_h):
+    b_Rect = CGRectMake(0.44 * b_w, 0.9785 * b_h, 0.123 * b_w,
+                                0.0228 * b_h)
     return b_Rect
 
 class Ui_MainWindow(object):
@@ -35,7 +47,7 @@ class Ui_MainWindow(object):
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.Trigger = QtWidgets.QPushButton(self.centralwidget)
-        self.Trigger.setGeometry(QtCore.QRect(10, 160, 113, 32))
+        self.Trigger.setGeometry(QtCore.QRect(10, 200, 113, 32))
         self.Trigger.setObjectName("Trigger")
         self.lineEdit = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit.setGeometry(QtCore.QRect(50, 40, 91, 21))
@@ -61,6 +73,10 @@ class Ui_MainWindow(object):
         self.lineEdit_4 = QtWidgets.QLineEdit(self.centralwidget)
         self.lineEdit_4.setGeometry(QtCore.QRect(50, 130, 91, 21))
         self.lineEdit_4.setObjectName("lineEdit_4")
+        self.lineEdit_5 = QtWidgets.QLineEdit(self.centralwidget)
+        self.lineEdit_5.setGeometry(QtCore.QRect(50, 160, 91, 21))
+        self.lineEdit_5.setObjectName("lineEdit_5")
+
 
         self.preview = QtWidgets.QLabel(self.centralwidget)
         self.preview.setGeometry(QtCore.QRect(150, 20, 650 , 520))
@@ -73,18 +89,32 @@ class Ui_MainWindow(object):
         chrome_options.add_experimental_option("useAutomationExtension", False);
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         self.driverbrower = webdriver.Chrome(options=chrome_options)
+        time.sleep(10) # wait this ready
         window_width = 1200
         window_height = 1100
         self.driverbrower.set_window_size(window_width, window_height)
         MainWindow.setCentralWidget(self.centralwidget)
         self.retranslateUi(MainWindow)
 
+        self.attacking = False
+        self.First_image = False
+        self.triggerattack = False
+        self.enemy_list = None
+        self.elistmutex = QMutex()
         self.ai_detect = QTimer()
         self.time_camera = QTimer()
+        self.detect_emeny = QTimer()
+        self.detect_emeny_status = QTimer()
         self.ai_detect.start(50)
-        self.time_camera.start(50)
+        self.time_camera.start(60)
+        self.detect_emeny.start(33)
+        self.Trigger.clicked.connect(self.Focusattack)
         self.ai_detect.timeout.connect(self.Inference)
         self.time_camera.timeout.connect(self.RenderFrame)
+        self.detect_emeny.timeout.connect(self.Detectemeny)
+        self.TargetSupervisor = CVdetection.TargetTrajectory()
+        self.TargetNameSup = CVdetection.BodyStatus()
+
         #origin blx = 74, bly = 92, trx = 218 try = 28 (base on 1200, 983)
         # window_x = (1 - 0.938) * width
         # window_y = 0.906 * height
@@ -92,6 +122,15 @@ class Ui_MainWindow(object):
         # window_h = 0.065 * height
         self.BodySupervisor = CVdetection.BodyStatus()
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+    def Focusattack(self):
+        self.triggerattack = not self.triggerattack
+        _translate = QtCore.QCoreApplication.translate
+        if self.triggerattack :
+            self.Trigger.setText(_translate("MainWindow", "Trigger"))
+        else:
+            self.attacking = False
+            self.First_image = False
+            self.Trigger.setText(_translate("MainWindow", "Sleep"))
 
     def GetwindowIdRect(self):
         canvas = self.driverbrower.find_element("css selector", "canvas")
@@ -141,6 +180,76 @@ class Ui_MainWindow(object):
                     elif idx == 3:
                         self.lineEdit_4.setText(body_str[idx][0])
         #CGImageRelease(cg_img_ref)
+    def Emenydisapper(self):
+        t_window_id, t_window_rect = self.GetwindowIdRect()
+        t_cg_img_ref = CGWindowListCreateImage(t_window_rect, kCGWindowListOptionIncludingWindow, t_window_id,
+                                               kCGWindowImageBoundsIgnoreFraming)
+        t_ciimage = cimg(CIImage.imageWithCGImage_(t_cg_img_ref))
+        ci_w, ci_h = t_ciimage.size
+        tarstatusbar = TargetTitle(ci_w, ci_h)
+        results = self.BodySupervisor.inputimage(t_ciimage, tarstatusbar)
+        if results:
+            self.lineEdit_5.setText(results[0][0])
+            self.attacking = True
+        else:
+            self.attacking = False
+
+    def Detectemeny(self):
+        if not self.triggerattack:
+            return
+        if self.attacking:
+            self.Emenydisapper()
+            return
+        window_id, window_rect = self.GetwindowIdRect()
+        cg_img_ref = CGWindowListCreateImage(window_rect, kCGWindowListOptionIncludingWindow, window_id,
+                                        kCGWindowImageBoundsIgnoreFraming)
+        ciimage = CIImage.imageWithCGImage_(cg_img_ref)
+        cimage = cimg(ciimage)
+        ci_w, ci_h = cimage.size
+        targetbar = DetectRect(ci_w, ci_h)
+        detectrange = cimage.crop(targetbar)
+        tarstatusbar = TargetTitle(ci_w, ci_h)
+        self.First_image = not self.TargetSupervisor.get_flag()
+        targetlist = self.TargetSupervisor.detectlist(detectrange.ciimage)
+        if not self.First_image:
+            return
+
+        enemy_loc = None
+        if targetlist:
+            canvas = self.driverbrower.find_element("id", "canvas")
+            actions = ActionChains(self.driverbrower)
+            style_attr = canvas.get_attribute("style")
+            style_height = int(re.search(r"height:\s*(\d+)px", style_attr).group(1))
+            style_width = int(re.search(r"width:\s*(\d+)px", style_attr).group(1))
+            for tr in targetlist:
+                tr.origin.x += targetbar.origin.x
+                tr.origin.y += targetbar.origin.y
+            targetlist = sorted(targetlist, reverse=True, key=lambda bs: bs.size.height * bs.size.width)
+            for tr in targetlist:
+                canvas_x = tr.origin.x * style_width / ci_w - (style_width / 2.0)
+                canvas_y = CVdetection.topbottomConv(ci_h , tr.origin.y) * style_height / ci_h - (style_height / 2.0)
+                actions.move_to_element_with_offset(canvas, canvas_x, canvas_y).click().perform()
+                t_window_id, t_window_rect = self.GetwindowIdRect()
+                t_cg_img_ref = CGWindowListCreateImage(t_window_rect, kCGWindowListOptionIncludingWindow, t_window_id,
+                                                     kCGWindowImageBoundsIgnoreFraming)
+                t_ciimage = cimg(CIImage.imageWithCGImage_(t_cg_img_ref))
+                results = self.BodySupervisor.inputimage(t_ciimage, tarstatusbar)
+                if results:
+                    if len(results) == 1 and 'Baby Albatt' != results[0][0]:
+                        enemy_loc = tr
+                        self.TargetSupervisor.rest_flag()
+                        canvas.send_keys("4")
+                        self.attacking = True
+                        break
+                else:
+                    actions.move_to_element_with_offset(canvas, -canvas_x, -canvas_y).click().perform()
+        else:
+            self.TargetSupervisor.rest_flag()
+        if enemy_loc:
+            self.lineEdit_5.setText('')
+        self.elistmutex.lock()
+        self.enemy_list = enemy_loc
+        self.elistmutex.unlock()
 
     def RenderFrame(self):
         window_id, window_rect = self.GetwindowIdRect()
@@ -150,6 +259,9 @@ class Ui_MainWindow(object):
         width = CGImageGetWidth(cg_img_ref)
         height = CGImageGetHeight(cg_img_ref)
         bodystatusBar = BodyRectBar(width, height)
+        detectrange = DetectRect(width, height)
+        targetbar = TargetTitle(width, height)
+
         bits_per_component = CGImageGetBitsPerComponent(cg_img_ref)
         bits_per_pixel = CGImageGetBitsPerPixel(cg_img_ref)
         bytes_per_row = CGImageGetBytesPerRow(cg_img_ref)
@@ -162,10 +274,20 @@ class Ui_MainWindow(object):
                                                      bytes_per_row,  color_space, bitmap_info)
         CoreGraphics.CGContextSetRGBFillColor(context, 1, 0, 0, 1)
         CoreGraphics.CGContextStrokeRect(context,  bodystatusBar)
-        CoreGraphics.CGContextSetLineWidth(context, 5.0);
+        CoreGraphics.CGContextSetRGBFillColor(context, 0, 1, 0, 1)
+        CoreGraphics.CGContextStrokeRect(context,  detectrange)
+        CoreGraphics.CGContextSetRGBFillColor(context, 0, 0, 1, 1)
+        CoreGraphics.CGContextStrokeRect(context,  targetbar)
         # e_time = time.time()
         # print("draw time :", e_time - s_time)
-
+        # enemy = None
+        # self.elistmutex.lock()
+        # enemy = self.enemy_list
+        # self.elistmutex.unlock()
+        # if enemy:
+        #     CoreGraphics.CGContextSetRGBFillColor(context, 1, 0 , 1, 1)
+        #     CoreGraphics.CGContextStrokeRect(context, enemy)
+        # CoreGraphics.CGContextSetLineWidth(context, 5.0)
         qimage = QtGui.QImage(data, width, height, bytes_per_row, QtGui.QImage.Format_ARGB32)
 
         self.preview.setPixmap(QtGui.QPixmap.fromImage(qimage))
@@ -174,7 +296,7 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
-        self.Trigger.setText(_translate("MainWindow", "Trigger"))
+        self.Trigger.setText(_translate("MainWindow", "Sleep"))
         self.label.setText(_translate("MainWindow", "HP"))
         self.label_2.setText(_translate("MainWindow", "MP"))
         self.label_3.setText(_translate("MainWindow", "FP"))
